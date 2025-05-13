@@ -70,7 +70,7 @@ var listTests = []line{
 	{"08-10-15  02:04PM       <DIR>          Billing", "Billing", 0, EntryTypeFolder, newTime(2015, time.August, 10, 14, 4)},
 	{"08-07-2015  07:50PM                  718 Post_PRR_20150901_1166_265118_13049.dat", "Post_PRR_20150901_1166_265118_13049.dat", 718, EntryTypeFile, newTime(2015, time.August, 7, 19, 50)},
 	{"08-10-2015  02:04PM       <DIR>          Billing", "Billing", 0, EntryTypeFolder, newTime(2015, time.August, 10, 14, 4)},
-	
+
 	// dir and file names that contain multiple spaces
 	{"drwxr-xr-x    3 110      1002            3 Dec 02  2009 spaces   dir   name", "spaces   dir   name", 0, EntryTypeFolder, newTime(2009, time.December, 2)},
 	{"-rwxr-xr-x    3 110      1002            1234567 Dec 02  2009 file   name", "file   name", 1234567, EntryTypeFile, newTime(2009, time.December, 2)},
@@ -168,6 +168,59 @@ func TestSettime(t *testing.T) {
 
 			assert.Equal(t, test.expected, entry.Time)
 		})
+	}
+}
+
+func TestParseIbmListLine(t *testing.T) {
+	// Set a fixed time for the tests
+	now := newTime(2023, time.January, 1)
+
+	tests := []struct {
+		line     string
+		expected Entry
+	}{
+		{
+			"TSTITFECOM        804 13/05/25 13:26:10 *STMF      SGC_ON_HAND_090425_000001.CSV",
+			Entry{
+				Name: "SGC_ON_HAND_090425_000001.CSV",
+				Size: 804,
+				Time: newTime(2013, time.May, 25, 13, 26, 10),
+				Type: EntryTypeFile,
+			},
+		},
+		{
+			"TSTITFECOM      12288 13/05/25 13:26:12 *DIR       .deleted/",
+			Entry{
+				Name: ".deleted",
+				Size: 12288,
+				Time: newTime(2013, time.May, 25, 13, 26, 12),
+				Type: EntryTypeFolder,
+			},
+		},
+	}
+
+	for _, test := range tests {
+		entry, err := parseIbmListLine(test.line, now, time.UTC)
+		if err != nil {
+			t.Errorf("Failed to parse line: %s with error: %v", test.line, err)
+			continue
+		}
+
+		if entry.Name != test.expected.Name {
+			t.Errorf("Expected name %s, got %s", test.expected.Name, entry.Name)
+		}
+
+		if entry.Size != test.expected.Size {
+			t.Errorf("Expected size %d, got %d", test.expected.Size, entry.Size)
+		}
+
+		if !entry.Time.Equal(test.expected.Time) {
+			t.Errorf("Expected time %v, got %v", test.expected.Time, entry.Time)
+		}
+
+		if entry.Type != test.expected.Type {
+			t.Errorf("Expected type %v, got %v", test.expected.Type, entry.Type)
+		}
 	}
 }
 

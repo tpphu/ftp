@@ -19,6 +19,7 @@ var listLineParsers = []parseFunc{
 	parseLsListLine,
 	parseDirListLine,
 	parseHostedFTPLine,
+	parseIbmListLine,
 }
 
 var dirTimeFormats = []string{
@@ -225,6 +226,121 @@ func parseHostedFTPLine(line string, now time.Time, loc *time.Location) (*Entry,
 
 	// Set link count to 1 and attempt to parse as Unix.
 	return parseLsListLine(fields[0]+" 1 "+scanner.Remaining(), now, loc)
+}
+
+// parseIbmListLine parses a directory line in the format used by IBM systems (like AS/400, iSeries)
+// Format example:
+// TSTITFECOM        830 13/05/25 13:26:11 *STMF      SGC_ON_HAND_310325_000007.CSV
+// TSTITFECOM        437 13/05/25 13:26:11 *STMF      SGC_ON_HAND__050005.CSV
+// TSTITFECOM      12288 13/05/25 13:26:12 *DIR       .deleted/
+func parseIbmListLine(line string, now time.Time, loc *time.Location) (*Entry, error) {
+	// The format appears to have fixed columns
+	scanner := newScanner(line)
+
+	// First field is owner/username
+	owner := scanner.Next()
+	if owner == "" {
+		return nil, errUnsupportedListLine
+	}
+
+	// Second field is the size
+	sizeStr := scanner.Next()
+	if sizeStr == "" {
+		return nil, errUnsupportedListLine
+	}
+
+	// Next fields are date and time
+	dateStr := scanner.Next()
+	if dateStr == "" || len(dateStr) != 8 { // YY/MM/DD format
+		return nil, errUnsupportedListLine
+	}
+
+	timeStr := scanner.Next()
+	if timeStr == "" || len(timeStr) != 8 { // HH:MM:SS format
+		return nil, errUnsupportedListLine
+	}
+
+	// Next field is file type
+	fileType := scanner.Next()
+	if fileType == "" {
+		return nil, errUnsupportedListLine
+	}
+
+	// The rest is the path
+	path := strings.TrimLeft(scanner.Remaining(), " ")
+	if path == "" {
+		return nil, errUnsupportedListLine
+	}
+
+	// Remove trailing slash from path if present
+	if len(path) > 0 && path[len(path)-1] == '/' {
+		path = path[:len(path)-1]
+	}
+
+	// Parse size
+	size, err := strconv.ParseUint(sizeStr, 10, 64)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse time
+	// Format is YY/MM/DD HH:MM:SS - most systems use YY format for years beyond 2000
+	// So 13/05/25 is likely 2013-05-25
+	year, err := strconv.Atoi(dateStr[0:2])
+	if err != nil {
+		return nil, err
+	}
+	if year < 50 { // Assume 20xx for years less than 50
+		year += 2000
+	} else { // Assume 19xx for years >= 50
+		year += 1900
+	}
+
+	month, err := strconv.Atoi(dateStr[3:5])
+	if err != nil || month < 1 || month > 12 {
+		return nil, err
+	}
+
+	day, err := strconv.Atoi(dateStr[6:8])
+	if err != nil || day < 1 || day > 31 {
+		return nil, err
+	}
+
+	hour, err := strconv.Atoi(timeStr[0:2])
+	if err != nil || hour < 0 || hour > 23 {
+		return nil, err
+	}
+
+	min, err := strconv.Atoi(timeStr[3:5])
+	if err != nil || min < 0 || min > 59 {
+		return nil, err
+	}
+
+	sec, err := strconv.Atoi(timeStr[6:8])
+	if err != nil || sec < 0 || sec > 59 {
+		return nil, err
+	}
+
+	timestamp := time.Date(year, time.Month(month), day, hour, min, sec, 0, loc)
+
+	// Get the entry name from the path - lấy tên cuối cùng từ đường dẫn
+	name := path
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		name = path[i+1:]
+	}
+
+	// Determine entry type
+	entryType := EntryTypeFile
+	if fileType == "*DIR" {
+		entryType = EntryTypeFolder
+	}
+
+	return &Entry{
+		Name: name,
+		Size: size,
+		Time: timestamp,
+		Type: entryType,
+	}, nil
 }
 
 // parseListLine parses the various non-standard format returned by the LIST
