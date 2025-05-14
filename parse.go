@@ -230,9 +230,15 @@ func parseHostedFTPLine(line string, now time.Time, loc *time.Location) (*Entry,
 
 // parseIbmListLine parses a directory line in the format used by IBM systems (like AS/400, iSeries)
 // Format example:
-// TSTITFECOM        830 13/05/25 13:26:11 *STMF      SGC_ON_HAND_310325_000007.CSV
-// TSTITFECOM        437 13/05/25 13:26:11 *STMF      SGC_ON_HAND__050005.CSV
+// TSTITFECOM        830 13/05/25 13:26:11 *STMF      ON_HAND_310325_000007.CSV
+// TSTITFECOM        437 13/05/25 13:26:11 *STMF      ON_HAND__050005.CSV
 // TSTITFECOM      12288 13/05/25 13:26:12 *DIR       .deleted/
+// TSTITFECOM       8192 13/05/25 13:31:42 *DIR       114/
+// TSTITFECOM       8192 13/05/25 13:31:42 *DIR       130/
+// TSTITFECOM       8192 13/05/25 13:31:43 *DIR       561/
+// TSTITFECOM      21504 13/05/25 13:31:42 *STMF      114/POLL53.DWN
+// TSTITFECOM        644 13/05/25 13:31:42 *STMF      114/POLL79.DWN
+// TSTITFECOM       1280 13/05/25 13:31:42 *STMF      114/POLLTM.DWN
 func parseIbmListLine(line string, now time.Time, loc *time.Location) (*Entry, error) {
 	// The format appears to have fixed columns
 	scanner := newScanner(line)
@@ -272,67 +278,58 @@ func parseIbmListLine(line string, now time.Time, loc *time.Location) (*Entry, e
 		return nil, errUnsupportedListLine
 	}
 
-	// Remove trailing slash from path if present
-	if len(path) > 0 && path[len(path)-1] == '/' {
-		path = path[:len(path)-1]
-	}
-
 	// Parse size
 	size, err := strconv.ParseUint(sizeStr, 10, 64)
 	if err != nil {
 		return nil, err
 	}
 
-	// Parse time
-	// Format is YY/MM/DD HH:MM:SS - most systems use YY format for years beyond 2000
-	// So 13/05/25 is likely 2013-05-25
-	year, err := strconv.Atoi(dateStr[0:2])
+	// 13/05/25 is meant to be year=2025, month=05, day=13
+	day, err := strconv.Atoi(dateStr[0:2])
 	if err != nil {
 		return nil, err
 	}
-	if year < 50 { // Assume 20xx for years less than 50
-		year += 2000
-	} else { // Assume 19xx for years >= 50
-		year += 1900
-	}
 
 	month, err := strconv.Atoi(dateStr[3:5])
-	if err != nil || month < 1 || month > 12 {
+	if err != nil {
 		return nil, err
 	}
 
-	day, err := strconv.Atoi(dateStr[6:8])
-	if err != nil || day < 1 || day > 31 {
+	year, err := strconv.Atoi(dateStr[6:8])
+	if err != nil {
 		return nil, err
 	}
+	// Assuming YY is actually the full year 2025
+	year = 2000 + year
 
 	hour, err := strconv.Atoi(timeStr[0:2])
-	if err != nil || hour < 0 || hour > 23 {
+	if err != nil {
 		return nil, err
 	}
 
 	min, err := strconv.Atoi(timeStr[3:5])
-	if err != nil || min < 0 || min > 59 {
+	if err != nil {
 		return nil, err
 	}
 
 	sec, err := strconv.Atoi(timeStr[6:8])
-	if err != nil || sec < 0 || sec > 59 {
+	if err != nil {
 		return nil, err
 	}
 
 	timestamp := time.Date(year, time.Month(month), day, hour, min, sec, 0, loc)
 
-	// Get the entry name from the path - lấy tên cuối cùng từ đường dẫn
-	name := path
-	if i := strings.LastIndex(path, "/"); i >= 0 {
-		name = path[i+1:]
-	}
-
 	// Determine entry type
 	entryType := EntryTypeFile
 	if fileType == "*DIR" {
 		entryType = EntryTypeFolder
+	}
+
+	// Get the entry name from the path
+	name := path
+	if entryType == EntryTypeFolder && strings.HasSuffix(name, "/") {
+		// Remove trailing slash for directory names
+		name = name[:len(name)-1]
 	}
 
 	return &Entry{

@@ -180,11 +180,11 @@ func TestParseIbmListLine(t *testing.T) {
 		expected Entry
 	}{
 		{
-			"TSTITFECOM        804 13/05/25 13:26:10 *STMF      SGC_ON_HAND_090425_000001.CSV",
+			"TSTITFECOM        804 13/05/25 13:26:10 *STMF      ON_HAND_090425_000001.CSV",
 			Entry{
-				Name: "SGC_ON_HAND_090425_000001.CSV",
+				Name: "ON_HAND_090425_000001.CSV",
 				Size: 804,
-				Time: newTime(2013, time.May, 25, 13, 26, 10),
+				Time: newTime(2025, time.May, 13, 13, 26, 10),
 				Type: EntryTypeFile,
 			},
 		},
@@ -193,8 +193,26 @@ func TestParseIbmListLine(t *testing.T) {
 			Entry{
 				Name: ".deleted",
 				Size: 12288,
-				Time: newTime(2013, time.May, 25, 13, 26, 12),
+				Time: newTime(2025, time.May, 13, 13, 26, 12),
 				Type: EntryTypeFolder,
+			},
+		},
+		{
+			"TSTITFECOM       8192 13/05/25 13:31:43 *DIR       561/",
+			Entry{
+				Name: "561",
+				Size: 8192,
+				Time: newTime(2025, time.May, 13, 13, 31, 43),
+				Type: EntryTypeFolder,
+			},
+		},
+		{
+			"TSTITFECOM      21504 13/05/25 13:31:42 *STMF      114/POLL53.DWN",
+			Entry{
+				Name: "114/POLL53.DWN",
+				Size: 21504,
+				Time: newTime(2025, time.May, 13, 13, 31, 42),
+				Type: EntryTypeFile,
 			},
 		},
 	}
